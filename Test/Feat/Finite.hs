@@ -1,5 +1,5 @@
 -- | A datatype of finite sequences
-module Test.Feat.Finite (Finite (..), Index, fromFinite, finFin) where
+module Test.Feat.Finite (Finite (..), Index, fromFinite, finFin, sumSel, sumSel', removeMinimum, A(..)) where
 
 import Control.Applicative
 import Data.Semigroup
@@ -15,10 +15,13 @@ finUnion f1 f2
   | fCard f1 == 0  = f2
   | fCard f2 == 0  = f1
   | otherwise      = Finite car sel where
-  car = fCard f1 + fCard f2
-  sel i = if i < fCard f1
-    then fIndex f1 i
-    else fIndex f2 (i-fCard f1)
+
+  card1 = fCard f1
+  card2 = fCard f2
+
+  car = card1 + card2
+
+  sel = sumSel [f1, f2]
 
 instance Functor Finite where
   fmap f fin = fin{fIndex = f . fIndex fin}
@@ -29,23 +32,46 @@ instance Applicative Finite where
 
 instance Alternative Finite where
   empty = finEmpty
-  (<|>) = finUnion
+  (<|>) f1 f2 = mconcat [f1, f2]
 
 instance Semigroup (Finite a) where
-  (<>) = finUnion
+  (<>) f1 f2 = mconcat [f1, f2]
 
 instance Monoid (Finite a) where
   mempty = finEmpty
-  mappend = finUnion
+  mappend f1 f2 = mconcat [f1, f2]
   mconcat xs = Finite
     (sum $ map fCard xs)
     (sumSel $ filter ((>0) . fCard) xs)
 
 sumSel :: [Finite a] -> (Index -> a)
-sumSel (f:rest) = \i -> if i < fCard f
-  then fIndex f i
-  else sumSel rest (i-fCard f)
-sumSel _        = error "Index out of bounds"
+sumSel = sumSel' 0 0
+
+data A = A | B | C | D | E deriving (Eq, Show)
+
+sumSel' :: Integer -> Integer -> [Finite a] -> Index -> a
+sumSel' offset height [f] i = fIndex f (i - offset + height)
+sumSel' offset height fs i =
+  let
+    j = i - offset
+    n = fromIntegral (length fs) :: Integer
+    minCard = minimum (map fCard fs) :: Integer
+    (valueIndex, partNumber) = j `quotRem` n
+    currentPart = fs !! fromIntegral partNumber
+    value = fIndex currentPart (valueIndex + height)
+  in
+    if j < n * minCard then
+      value
+    else
+      sumSel' (offset + n * minCard) (height + minCard) (removeMinimum minCard fs) j
+
+removeMinimum :: Integer -> [Finite a] -> [Finite a]
+removeMinimum minCard []       = []
+removeMinimum minCard (f:rest) =
+  if fCard f == minCard then
+    removeMinimum minCard rest
+  else
+    f : removeMinimum minCard rest
 
 finCart :: Finite a -> Finite b -> Finite (a,b)
 finCart f1 f2 = Finite car sel where
@@ -69,4 +95,3 @@ instance Show a => Show (Finite a) where
 finFin :: Integer -> Finite Integer
 finFin k | k <= 0 = finEmpty
 finFin k = Finite k (\i -> i)
-
